@@ -1,5 +1,6 @@
 <Project>
   <PropertyGroup>
+    <UseArtifactsOutput>true</UseArtifactsOutput>
     <TargetFramework>net11.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>

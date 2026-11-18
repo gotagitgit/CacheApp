@@ -93,6 +93,8 @@ Create/update request body:
 
 ## Observe the cache
 
+For a detailed walkthrough of the L1/L2 cache setup, key/tag layout, and cross-process invalidation flow, see [Hybrid cache reference](references/hybrid-cache.md).
+
 - Product details use `products:item:{guid}`. Each page uses `products:list:{page}:{pageSize}`.
 - HybridCache checks local MemoryCache first, then Redis, then SQL Server on a miss. SQL factory loads are logged.
 - L1 expires after 10 seconds; Redis L2 expires after 30 seconds. These values and the 20-unit L1 capacity are configurable in `appsettings.json` or environment variables.

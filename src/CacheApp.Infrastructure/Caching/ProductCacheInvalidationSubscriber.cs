@@ -17,7 +17,7 @@ public sealed class ProductCacheInvalidationSubscriber(
     CacheReadiness readiness,
     ILogger<ProductCacheInvalidationSubscriber> logger) : IHostedService
 {
-    private readonly Channel<SubscriberWork> _work = Channel.CreateUnbounded<SubscriberWork>();
+    private readonly Channel<SubscriberWork> _workers = Channel.CreateUnbounded<SubscriberWork>();
     private readonly CancellationTokenSource _stopping = new();
     private ISubscriber? _subscriber;
     private Task? _worker;
@@ -41,7 +41,7 @@ public sealed class ProductCacheInvalidationSubscriber(
     {
         redis.ConnectionRestored -= OnConnectionRestored;
         _stopping.Cancel();
-        _work.Writer.TryComplete();
+        _workers.Writer.TryComplete();
 
         if (_subscriber is not null)
         {
@@ -65,7 +65,7 @@ public sealed class ProductCacheInvalidationSubscriber(
                 return;
             }
 
-            _work.Writer.TryWrite(new SubscriberWork(message, ResetProductCache: false));
+            _workers.Writer.TryWrite(new SubscriberWork(message, false));
         }
         catch (Exception exception)
         {
@@ -76,12 +76,12 @@ public sealed class ProductCacheInvalidationSubscriber(
     private void OnConnectionRestored(object? sender, ConnectionFailedEventArgs eventArgs)
     {
         readiness.MarkUnavailable();
-        _work.Writer.TryWrite(new SubscriberWork(null, ResetProductCache: true));
+        _workers.Writer.TryWrite(new SubscriberWork(null, true));
     }
 
     private async Task ProcessWorkAsync(CancellationToken cancellationToken)
     {
-        await foreach (var work in _work.Reader.ReadAllAsync(cancellationToken))
+        await foreach (var work in _workers.Reader.ReadAllAsync(cancellationToken))
         {
             if (work.ResetProductCache)
             {

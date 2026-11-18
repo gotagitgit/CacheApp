@@ -10,16 +10,16 @@ public sealed class CacheReadinessTests
         var readiness = new CacheReadiness();
         var waitingRead = readiness.WaitUntilReadyAsync(CancellationToken.None);
 
-        Assert.False(waitingRead.IsCompleted);
+        waitingRead.IsCompleted.Should().BeFalse();
 
         readiness.MarkReady();
         await waitingRead;
 
         readiness.MarkUnavailable();
-        Assert.False(readiness.IsReady);
+        readiness.IsReady.Should().BeFalse();
 
         var readAfterReconnect = readiness.WaitUntilReadyAsync(CancellationToken.None);
-        Assert.False(readAfterReconnect.IsCompleted);
+        readAfterReconnect.IsCompleted.Should().BeFalse();
 
         readiness.MarkReady();
         await readAfterReconnect;

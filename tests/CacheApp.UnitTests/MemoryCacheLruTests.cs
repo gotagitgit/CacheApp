@@ -20,15 +20,15 @@ public sealed class MemoryCacheLruTests
         clock.Advance(TimeSpan.FromSeconds(1));
         cache.Set("least-recent", "least-recent", new MemoryCacheEntryOptions().SetSize(1));
         clock.Advance(TimeSpan.FromSeconds(1));
-        Assert.Equal("cold", cache.Get<string>("cold"));
+        cache.Get<string>("cold").Should().Be("cold");
         clock.Advance(TimeSpan.FromSeconds(1));
         cache.Set("newest", "newest", new MemoryCacheEntryOptions().SetSize(1));
 
         cache.Compact(1d / 3d);
 
-        Assert.Null(cache.Get<string>("least-recent"));
-        Assert.Equal("cold", cache.Get<string>("cold"));
-        Assert.Equal("newest", cache.Get<string>("newest"));
+        cache.Get<string>("least-recent").Should().BeNull();
+        cache.Get<string>("cold").Should().Be("cold");
+        cache.Get<string>("newest").Should().Be("newest");
     }
 
     private sealed class TestClock(DateTimeOffset utcNow) : ISystemClock

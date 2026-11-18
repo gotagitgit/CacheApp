@@ -11,7 +11,7 @@ public sealed class ProductRequestValidatorTests
 
         var errors = ProductRequestValidator.Validate(request);
 
-        Assert.Empty(errors);
+        errors.Should().BeEmpty();
     }
 
     [Fact]
@@ -21,9 +21,9 @@ public sealed class ProductRequestValidatorTests
 
         var errors = ProductRequestValidator.Validate(request);
 
-        Assert.Contains(nameof(ProductRequest.Name), errors.Keys);
-        Assert.Contains(nameof(ProductRequest.Description), errors.Keys);
-        Assert.Contains(nameof(ProductRequest.Price), errors.Keys);
-        Assert.Contains(nameof(ProductRequest.StockQuantity), errors.Keys);
+        errors.Keys.Should().Contain(nameof(ProductRequest.Name));
+        errors.Keys.Should().Contain(nameof(ProductRequest.Description));
+        errors.Keys.Should().Contain(nameof(ProductRequest.Price));
+        errors.Keys.Should().Contain(nameof(ProductRequest.StockQuantity));
     }
 }

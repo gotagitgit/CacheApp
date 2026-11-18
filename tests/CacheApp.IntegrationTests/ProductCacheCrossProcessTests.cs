@@ -16,25 +16,25 @@ public sealed class ProductCacheCrossProcessTests
         using var secondClient = secondFactory.CreateClient();
 
         var original = await secondClient.GetFromJsonAsync<ProductResponse>($"/api/products/{SeedProductId}");
-        Assert.NotNull(original);
+        original.Should().NotBeNull();
 
         var originalPage = await secondClient.GetFromJsonAsync<ProductPageResponse>("/api/products?page=1&pageSize=20");
-        Assert.NotNull(originalPage);
-        Assert.Contains(originalPage.Items, item => item.Id == SeedProductId);
+        originalPage.Should().NotBeNull();
+        originalPage!.Items.Should().Contain(item => item.Id == SeedProductId);
 
-        var updated = new ProductRequest("Updated across processes", original.Description, original.Price, original.StockQuantity);
+        var updated = new ProductRequest("Updated across processes", original!.Description, original.Price, original.StockQuantity);
 
         try
         {
             var updateResponse = await firstClient.PutAsJsonAsync($"/api/products/{SeedProductId}", updated);
-            Assert.Equal(HttpStatusCode.NoContent, updateResponse.StatusCode);
+            updateResponse.StatusCode.Should().Be(HttpStatusCode.NoContent);
 
             await WaitForUpdatedProductAsync(secondClient, "Updated across processes");
             await WaitForUpdatedListItemAsync(secondClient, "Updated across processes");
         }
         finally
         {
-            var restoreRequest = new ProductRequest(original.Name, original.Description, original.Price, original.StockQuantity);
+            var restoreRequest = new ProductRequest(original!.Name, original.Description, original.Price, original.StockQuantity);
             await firstClient.PutAsJsonAsync($"/api/products/{SeedProductId}", restoreRequest);
         }
     }

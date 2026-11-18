@@ -1,0 +1,11 @@
+@CacheApp.Api_HostAddress = http://localhost:5068
+
+GET {{CacheApp.Api_HostAddress}}/openapi/v1.json
+Accept: application/json
+
+###
+
+GET {{CacheApp.Api_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

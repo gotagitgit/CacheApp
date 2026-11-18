@@ -1,0 +1,8 @@
+<Solution>
+  <Project Path="src/CacheApp.Domain/CacheApp.Domain.csproj" />
+  <Project Path="src/CacheApp.Application/CacheApp.Application.csproj" />
+  <Project Path="src/CacheApp.Infrastructure/CacheApp.Infrastructure.csproj" />
+  <Project Path="src/CacheApp.Api/CacheApp.Api.csproj" />
+  <Project Path="tests/CacheApp.UnitTests/CacheApp.UnitTests.csproj" />
+  <Project Path="tests/CacheApp.IntegrationTests/CacheApp.IntegrationTests.csproj" />
+</Solution>

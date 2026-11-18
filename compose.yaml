@@ -1,3 +1,5 @@
+name: cacheapp
+
 services:
   redis:
     image: redis:7-alpine
@@ -10,3 +12,21 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+
+  redisinsight:
+    image: redis/redisinsight:latest
+    container_name: product-cache-redisinsight
+    ports:
+      - "127.0.0.1:5540:5540"
+    volumes:
+      - redisinsight-data:/data
+    environment:
+      RI_REDIS_HOST: redis
+      RI_REDIS_PORT: 6379
+      RI_REDIS_ALIAS: Product Cache Redis
+    depends_on:
+      redis:
+        condition: service_healthy
+
+volumes:
+  redisinsight-data:

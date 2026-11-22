@@ -22,7 +22,10 @@ public sealed class HybridCacheLruTests
 
         using var provider = services.BuildServiceProvider();
         var hybridCache = provider.GetRequiredService<HybridCache>();
-        var memoryCache = Assert.IsType<MemoryCache>(provider.GetRequiredService<IMemoryCache>());
+        var memoryCache = provider.GetRequiredService<IMemoryCache>()
+            .Should()
+            .BeOfType<MemoryCache>()
+            .Subject;
         var leastRecentFactoryCalls = 0;
 
         await hybridCache.GetOrCreateAsync(
@@ -59,8 +62,8 @@ public sealed class HybridCacheLruTests
             EntryOptions,
             cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.Equal("least-recent", value);
-        Assert.Equal(1, leastRecentFactoryCalls);
+        value.Should().Be("least-recent");
+        leastRecentFactoryCalls.Should().Be(1);
     }
 
     private static HybridCacheEntryOptions EntryOptions => new()

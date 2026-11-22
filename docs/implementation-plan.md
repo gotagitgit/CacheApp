@@ -2,7 +2,7 @@
 
 ## Status
 
-Implementation Planning, including the project-boundary amendment, was approved by the user on 2026-11-17. Construction is in progress. The four-project split builds successfully and unit tests pass; SQL Server/Redis integration validation remains pending because external dependencies are not configured in this environment. The solution identity rename implementation-plan amendment was approved and completed on 2026-11-18: clean build succeeded with zero warnings/errors, formatting passed, eight tests passed, and one SQL Server/Redis integration test was skipped because external connections were not configured.
+Implementation Planning, including the project-boundary amendment, was approved by the user on 2026-11-17. Construction is in progress. The four-project split builds successfully and unit tests pass; SQL Server/Redis integration validation remains pending because external dependencies are not configured in this environment. The solution identity rename implementation-plan amendment was approved and completed on 2026-11-18: clean build succeeded with zero warnings/errors, formatting passed, eight tests passed, and one SQL Server/Redis integration test was skipped because external connections were not configured. The portable integration-test setup amendment was approved and implemented on 2026-11-22; formatting passed, eight unit tests passed, and the cross-process SQL Server/Redis test was skipped because `ConnectionStrings__TestSqlServer` was not configured.
 
 ## Implementation outline
 
@@ -59,11 +59,11 @@ Implementation Planning, including the project-boundary amendment, was approved 
 - **Unit tests:** Validate pagination and product input rules, cache key/tag construction, per-process coalescing, and reconnect invalidation gating.
 - **SQL Server integration tests:** Against a dedicated SQL Server database with migrations manually applied, verify schema/seed rows, CRUD persistence, stable page ordering/metadata, and migration-only seed lifecycle.
 - **Redis/HybridCache integration tests:** With Redis from Compose, verify L1 hits avoid the factory, L2 serves across separate API hosts, detail and list invalidation after writes, 10/30-second expirations, and LRU eviction under constrained capacity.
-- **Cross-process tests:** Start two independently configured API hosts with separate HybridCache L1 instances and shared SQL Server/Redis. Warm both, write through one, and verify the other reloads current data after Pub/Sub invalidation. Simulate a missed event and Redis reconnect; verify local product-tag invalidation before cache reads resume. Verify a stopped host has an empty L1 after restart and uses the current L2 value.
+- **Cross-process tests:** Start two independently configured API hosts with separate HybridCache L1 instances and shared SQL Server/Redis. Warm both, write through one, and verify the other reloads current data after Pub/Sub invalidation. Simulate a missed event and Redis reconnect; verify local product-tag invalidation before cache reads resume. Verify a stopped host has an empty L1 after restart and uses the current L2 value. The portable cross-process test amendment below specifies a temporary SQL database on the external SQL Server instance and a fixture-owned Redis container.
 - **Redis outage scenario:** Verify that failed invalidation is logged after a committed SQL write and cached values expire within their configured layer TTLs. Do not assert durable Pub/Sub replay or cross-process distributed stampede suppression.
 - **Manual acceptance:** Run Redis Compose, manually apply EF migrations, start one API process, exercise CRUD and pagination with Swagger, then run two API hosts on separate local ports for cross-process invalidation demonstration.
 
-Integration verification requires a Docker-capable environment, a dedicated SQL Server database, and valid local connection strings. The current environment has .NET SDK 11.0.100 but Docker is not available on PATH.
+The portable cross-process integration test requires a Docker-capable environment and a SQL Server connection with permission to create and drop a test database. The current environment has .NET SDK 11.0.100 but Docker is not available on PATH.
 
 ## Dependencies and files
 
@@ -109,3 +109,27 @@ Requirements Definition, Architecture and Design, and this implementation-plan a
 - [Redis cache adapter 11.0.0](https://www.nuget.org/packages/Microsoft.Extensions.Caching.StackExchangeRedis/11.0.0)
 - [StackExchange.Redis 3.2.0](https://www.nuget.org/packages/StackExchange.Redis/3.2.0)
 - [ASP.NET Core integration testing 11.0.0](https://www.nuget.org/packages/Microsoft.AspNetCore.Mvc.Testing/11.0.0)
+
+## Implementation amendment — portable Redis and configured SQL integration test
+
+This amendment keeps the existing cross-process invalidation acceptance criteria and changes how the integration test obtains its dependencies. The SQL Server instance remains externally managed, as in the approved architecture, while the fixture creates and drops a dedicated temporary database on that instance. This supersedes the requirement for manually configured `ConnectionStrings__Redis` for `ProductCacheCrossProcessTests`; it continues to require a configured SQL Server connection string with database create/drop permissions. The user approved this amendment on 2026-11-22.
+
+### Setup and isolation
+
+- Use Testcontainers for .NET to start one Redis container from a shared asynchronous xUnit fixture for the integration-test collection. Reuse the container across tests in that collection and dispose it when the collection finishes; do not start a new Redis container for every test method.
+- Require a Docker-compatible container runtime and a reachable SQL Server instance to run the integration test. Unit tests remain runnable without either dependency. If Redis container startup or SQL connectivity fails, report a clear integration-test setup failure.
+- Read a SQL Server admin connection string from `ConnectionStrings__TestSqlServer` (for local development, user secrets or an environment variable; for CI/cloud, a protected secret). It should connect to `master` or another system database and have permission to create and drop databases. Never point it at production data.
+- At fixture startup, create a uniquely named temporary database such as `ProductCachingTest_<run-id>` on that SQL Server instance, derive an application connection string targeting it, and apply the Infrastructure EF Core migrations. The test creates its own product through the API and does not rely on a migration seed ID.
+- After the test has disposed both API hosts and released their database connections, drop the temporary database during fixture disposal. A unique database name prevents parallel test runs from sharing SQL state. If the test process is forcibly terminated before disposal, the temporary database may remain and require cleanup.
+- Configure both API hosts with the same temporary database connection string, fixture Redis endpoint, cache key prefix, and Pub/Sub invalidation channel. Generate a unique cache prefix and channel for the fixture so concurrent test runs do not interfere with developer data or one another. The two hosts continue to have independent in-process L1 caches and instance IDs.
+
+### Tasks, files, and verification
+
+- Add a centrally managed Testcontainers package version and package reference to `CacheApp.IntegrationTests` for the `Testcontainers.Redis` package.
+- Add an asynchronous test fixture that owns Redis container startup/disposal and temporary SQL database creation, migration, and disposal; expose the derived application connection strings and unique cache settings.
+- Update `ProductApiFactory` to receive fixture settings rather than generating a different Redis endpoint, cache prefix, or topic for every host. Both host factories in the cross-process test must receive the same SQL connection, Redis endpoint, cache prefix, and topic.
+- Update `ProductCacheCrossProcessTests` to use fixture-provisioned services and create its own product before testing detail and list invalidation. Update `RequiresExternalDependenciesAttribute` to skip only when `ConnectionStrings__TestSqlServer` is absent; remove the attribute file only if it has no remaining consumers.
+- Update the README test instructions to state that the integration test starts disposable Redis through Docker and requires a SQL Server admin connection string with create/drop database permissions; it creates and drops a temporary `ProductCachingTest_<run-id>` database, applies migrations, and does not require a pre-seeded product ID.
+- Verify the cross-process test starts two hosts, warms detail and list values in the second host, updates the product through the first host, observes refreshed detail and list data through the second host, and cleans up test data. Run the test suite with Docker available; report if container execution is unavailable in the environment.
+
+The existing requirements and architecture approvals remain valid: application behavior, Redis Pub/Sub contracts, database schema, and production service configuration are unchanged. The amendment changed the implementation plan and test dependency setup only; construction is implemented. During local execution, the test factory's late `ConfigureAppConfiguration` callback did not override settings read before `builder.Build()`. `ProductApiFactory` now applies test settings through .NET 11's early `ConfigureWebApplicationBuilder` hook. Subscriber shutdown now treats cancellation as expected, and SQL fixture cleanup forces remaining sessions off its uniquely named test database before dropping it. Validation: `dotnet format CacheApp.slnx --verify-no-changes` passed, and `dotnet test CacheApp.slnx --no-restore` passed all 8 unit tests and the SQL Server/Redis cross-process integration test against local SQL Server Express and Docker Desktop. The test created and removed its temporary database and Redis container.

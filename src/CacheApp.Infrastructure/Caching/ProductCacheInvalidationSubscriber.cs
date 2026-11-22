@@ -81,18 +81,25 @@ public sealed class ProductCacheInvalidationSubscriber(
 
     private async Task ProcessWorkAsync(CancellationToken cancellationToken)
     {
-        await foreach (var work in _workers.Reader.ReadAllAsync(cancellationToken))
+        try
         {
-            if (work.ResetProductCache)
+            await foreach (var work in _workers.Reader.ReadAllAsync(cancellationToken))
             {
-                await RestoreCacheReadinessAsync(cancellationToken);
-                continue;
-            }
+                if (work.ResetProductCache)
+                {
+                    await RestoreCacheReadinessAsync(cancellationToken);
+                    continue;
+                }
 
-            if (work.Message is not null)
-            {
-                await InvalidateRemoteEntryAsync(work.Message.ProductId, cancellationToken);
+                if (work.Message is not null)
+                {
+                    await InvalidateRemoteEntryAsync(work.Message.ProductId, cancellationToken);
+                }
             }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            logger.LogInformation("Product cache invalidation worker stopped because the service is shutting down.");
         }
     }
 

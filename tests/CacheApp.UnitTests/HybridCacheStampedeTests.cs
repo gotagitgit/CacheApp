@@ -34,7 +34,7 @@ public sealed class HybridCacheStampedeTests
         releaseFactory.TrySetResult();
         var values = await Task.WhenAll(requests);
 
-        Assert.All(values, value => Assert.Equal(42, value));
-        Assert.Equal(1, factoryCalls);
+        values.Should().OnlyContain(value => value == 42);
+        factoryCalls.Should().Be(1);
     }
 }

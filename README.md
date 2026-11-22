@@ -116,4 +116,30 @@ dotnet run --project src/CacheApp.Api --urls http://localhost:5069
 dotnet test CacheApp.slnx
 ```
 
-Unit tests run without external services. SQL Server/Redis integration tests run when both `ConnectionStrings__ProductDatabase` and `ConnectionStrings__Redis` are set and the initial migrations have been manually applied to a dedicated test database. The tests use a separate Redis key prefix and Pub/Sub channel.
+Unit tests run without external services. The cross-process integration tests require a Docker-compatible container runtime and a SQL Server connection string in `ConnectionStrings__TestSqlServer`. The SQL connection must target `master` (or another system database) and use a test-only login that can create and drop databases; never point it at production.
+
+For example, in PowerShell, configure the connection for the current terminal session and run the suite:
+
+```powershell
+$env:ConnectionStrings__TestSqlServer = "Server=localhost;Database=master;Trusted_Connection=True;TrustServerCertificate=True;"
+dotnet test CacheApp.slnx
+```
+
+### Run integration tests from Visual Studio Test Explorer
+
+Visual Studio can pass the SQL connection string to the test process through a `.runsettings` file. For local development, create `CacheApp.local.runsettings` in the solution root (this file is ignored by Git) with your test SQL Server connection string:
+
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<RunSettings>
+  <RunConfiguration>
+    <EnvironmentVariables>
+      <ConnectionStrings__TestSqlServer>Server=localhost;Database=master;Trusted_Connection=True;TrustServerCertificate=True;</ConnectionStrings__TestSqlServer>
+    </EnvironmentVariables>
+  </RunConfiguration>
+</RunSettings>
+```
+
+In Visual Studio, select **Test > Configure Run Settings > Select Solution Wide runsettings File** and choose `CacheApp.local.runsettings`. Then run or debug the integration test in Test Explorer. Make sure Docker is running for the Redis container. Replace the example SQL connection string with your local test SQL Server settings; do not commit connection strings containing credentials.
+
+The integration-test fixture starts one isolated Redis container for its xUnit collection and creates a uniquely named `ProductCachingTest_<id>` database on the configured SQL Server instance. It applies the EF Core migrations, runs the test, then drops the temporary database and removes the Redis container when the fixture ends. Both API hosts in the test share that fixture's SQL database, Redis endpoint, cache key prefix, and Pub/Sub channel. They do not connect to or affect the Redis container used for local debugging. If the test process is forcibly terminated before cleanup, a temporary SQL database may remain and need manual removal.

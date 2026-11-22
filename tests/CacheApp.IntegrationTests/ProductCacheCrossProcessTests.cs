@@ -3,79 +3,121 @@ using CacheApp.Application.Products;
 
 namespace CacheApp.IntegrationTests;
 
-public sealed class ProductCacheCrossProcessTests
+[Collection(IntegrationTestCollection.CollectionName)]
+public sealed class ProductCacheCrossProcessTests(IntegrationTestFixture fixture)
 {
-    private static readonly Guid SeedProductId = Guid.Parse("10000000-0000-0000-0000-000000000001");
+    private const int ListPageSize = 20;
 
     [RequiresExternalDependencies]
     public async Task Write_in_one_host_invalidates_detail_and_list_cache_in_another_host()
     {
-        using var firstFactory = new ProductApiFactory();
-        using var secondFactory = new ProductApiFactory();
+        using var firstFactory = new ProductApiFactory(fixture.CreateApiSettings());
+        using var secondFactory = new ProductApiFactory(fixture.CreateApiSettings());
         using var firstClient = firstFactory.CreateClient();
         using var secondClient = secondFactory.CreateClient();
 
-        var original = await secondClient.GetFromJsonAsync<ProductResponse>($"/api/products/{SeedProductId}");
+        var createRequest = new ProductRequest(
+            "Original cross-process product",
+            "Created by the integration test",
+            49.95m,
+            7);
+        var createResponse = await firstClient.PostAsJsonAsync("/api/products", createRequest);
+        createResponse.StatusCode.Should().Be(HttpStatusCode.Created);
+
+        var original = await createResponse.Content.ReadFromJsonAsync<ProductResponse>();
         original.Should().NotBeNull();
-
-        var originalPage = await secondClient.GetFromJsonAsync<ProductPageResponse>("/api/products?page=1&pageSize=20");
-        originalPage.Should().NotBeNull();
-        originalPage!.Items.Should().Contain(item => item.Id == SeedProductId);
-
-        var updated = new ProductRequest("Updated across processes", original!.Description, original.Price, original.StockQuantity);
+        var productId = original!.Id;
+        var cachedListPage = 1;
 
         try
         {
-            var updateResponse = await firstClient.PutAsJsonAsync($"/api/products/{SeedProductId}", updated);
+            var cachedProduct = await secondClient.GetFromJsonAsync<ProductResponse>($"/api/products/{productId}");
+            cachedProduct.Should().BeEquivalentTo(original);
+
+            var firstPage = await secondClient.GetFromJsonAsync<ProductPageResponse>(
+                $"/api/products?page=1&pageSize={ListPageSize}");
+            firstPage.Should().NotBeNull();
+
+            if (firstPage!.Items.All(item => item.Id != productId))
+            {
+                cachedListPage = 2;
+            }
+
+            var cachedPage = cachedListPage == 1
+                ? firstPage
+                : await secondClient.GetFromJsonAsync<ProductPageResponse>(
+                    $"/api/products?page={cachedListPage}&pageSize={ListPageSize}");
+            cachedPage.Should().NotBeNull();
+            cachedPage!.Items.Should().Contain(item => item.Id == productId);
+
+            var updatedRequest = createRequest with { Name = "Updated across processes" };
+            var updateResponse = await firstClient.PutAsJsonAsync($"/api/products/{productId}", updatedRequest);
             updateResponse.StatusCode.Should().Be(HttpStatusCode.NoContent);
 
-            await WaitForUpdatedProductAsync(secondClient, "Updated across processes");
-            await WaitForUpdatedListItemAsync(secondClient, "Updated across processes");
+            await WaitForUpdatedProductAsync(secondClient, productId, updatedRequest.Name);
+            await WaitForUpdatedListItemAsync(secondClient, cachedListPage, productId, updatedRequest.Name);
         }
         finally
         {
-            var restoreRequest = new ProductRequest(original!.Name, original.Description, original.Price, original.StockQuantity);
-            await firstClient.PutAsJsonAsync($"/api/products/{SeedProductId}", restoreRequest);
+            await firstClient.DeleteAsync($"/api/products/{productId}");
         }
     }
 
-    private static async Task WaitForUpdatedProductAsync(HttpClient client, string expectedName)
+    private static async Task WaitForUpdatedProductAsync(HttpClient client, Guid productId, string expectedName)
     {
         using var cancellationTokenSource = new CancellationTokenSource(TimeSpan.FromSeconds(10));
 
-        while (!cancellationTokenSource.IsCancellationRequested)
+        try
         {
-            var product = await client.GetFromJsonAsync<ProductResponse>(
-                $"/api/products/{SeedProductId}",
-                cancellationTokenSource.Token);
-            if (product?.Name == expectedName)
+            while (!cancellationTokenSource.IsCancellationRequested)
             {
-                return;
+                var product = await client.GetFromJsonAsync<ProductResponse>(
+                    $"/api/products/{productId}",
+                    cancellationTokenSource.Token);
+                if (product?.Name == expectedName)
+                {
+                    return;
+                }
+
+                await Task.Delay(TimeSpan.FromMilliseconds(20), cancellationTokenSource.Token);
             }
-
-            await Task.Delay(TimeSpan.FromMilliseconds(20), cancellationTokenSource.Token);
         }
-
-        throw new TimeoutException("The second API host did not observe the product detail invalidation.");
+        catch (OperationCanceledException exception) when (cancellationTokenSource.IsCancellationRequested)
+        {
+            throw new TimeoutException(
+                "The API host reading the product detail did not observe the invalidation.",
+                exception);
+        }
     }
 
-    private static async Task WaitForUpdatedListItemAsync(HttpClient client, string expectedName)
+    private static async Task WaitForUpdatedListItemAsync(
+        HttpClient client,
+        int page,
+        Guid productId,
+        string expectedName)
     {
         using var cancellationTokenSource = new CancellationTokenSource(TimeSpan.FromSeconds(10));
 
-        while (!cancellationTokenSource.IsCancellationRequested)
+        try
         {
-            var page = await client.GetFromJsonAsync<ProductPageResponse>(
-                "/api/products?page=1&pageSize=20",
-                cancellationTokenSource.Token);
-            if (page?.Items.Any(item => item.Id == SeedProductId && item.Name == expectedName) == true)
+            while (!cancellationTokenSource.IsCancellationRequested)
             {
-                return;
+                var productPage = await client.GetFromJsonAsync<ProductPageResponse>(
+                    $"/api/products?page={page}&pageSize={ListPageSize}",
+                    cancellationTokenSource.Token);
+                if (productPage?.Items.Any(item => item.Id == productId && item.Name == expectedName) == true)
+                {
+                    return;
+                }
+
+                await Task.Delay(TimeSpan.FromMilliseconds(20), cancellationTokenSource.Token);
             }
-
-            await Task.Delay(TimeSpan.FromMilliseconds(20), cancellationTokenSource.Token);
         }
-
-        throw new TimeoutException("The second API host did not observe the product list invalidation.");
+        catch (OperationCanceledException exception) when (cancellationTokenSource.IsCancellationRequested)
+        {
+            throw new TimeoutException(
+                "The API host reading the product list did not observe the invalidation.",
+                exception);
+        }
     }
 }

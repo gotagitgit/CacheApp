@@ -9,10 +9,9 @@ public sealed class RequiresExternalDependenciesAttribute : FactAttribute
         [CallerLineNumber] int sourceLineNumber = -1)
         : base(sourceFilePath, sourceLineNumber)
     {
-        if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("ConnectionStrings__ProductDatabase")) ||
-            string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("ConnectionStrings__Redis")))
+        if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("ConnectionStrings__TestSqlServer")))
         {
-            Skip = "Set ConnectionStrings__ProductDatabase and ConnectionStrings__Redis to run SQL Server/Redis integration tests.";
+            Skip = "Set ConnectionStrings__TestSqlServer to a SQL Server system-database connection string with permission to create and drop test databases.";
         }
     }
 }

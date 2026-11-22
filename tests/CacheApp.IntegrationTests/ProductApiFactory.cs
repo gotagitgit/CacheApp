@@ -1,28 +1,30 @@
-using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Hosting;
 
 namespace CacheApp.IntegrationTests;
 
-public sealed class ProductApiFactory : WebApplicationFactory<Program>
+public sealed class ProductApiFactory(ProductApiTestSettings settings) : WebApplicationFactory<Program>
 {
-    private readonly string _cacheNamespace = $"product-cache-test-{Guid.NewGuid():N}:";
-    private readonly string _invalidationChannel = $"product-cache-test-{Guid.NewGuid():N}";
+    private const string TestLocalTtlSeconds = "120";
+    private const string TestDistributedTtlSeconds = "180";
+    private const string TestLocalSizeLimit = "100";
 
-    protected override void ConfigureWebHost(IWebHostBuilder builder)
+    protected override void ConfigureWebApplicationBuilder(IHostApplicationBuilder builder)
     {
-        builder.UseEnvironment("Development");
-        builder.ConfigureAppConfiguration((_, configuration) =>
-        {
-            var values = new Dictionary<string, string?>
+        builder.Environment.EnvironmentName = Environments.Development;
+        builder.Configuration.AddInMemoryCollection(
+            new Dictionary<string, string?>
             {
-                ["ConnectionStrings:ProductDatabase"] = Environment.GetEnvironmentVariable("ConnectionStrings__ProductDatabase"),
-                ["ConnectionStrings:Redis"] = Environment.GetEnvironmentVariable("ConnectionStrings__Redis"),
-                ["Cache:InvalidationChannel"] = _invalidationChannel,
-                ["Cache:RedisInstanceName"] = _cacheNamespace
-            };
+                ["ConnectionStrings:ProductDatabase"] = settings.ProductDatabaseConnectionString,
+                ["ConnectionStrings:Redis"] = settings.RedisConnectionString,
+                ["Cache:InvalidationChannel"] = settings.InvalidationChannel,
+                ["Cache:RedisInstanceName"] = settings.RedisInstanceName,
+                ["Cache:LocalTtlSeconds"] = TestLocalTtlSeconds,
+                ["Cache:DistributedTtlSeconds"] = TestDistributedTtlSeconds,
+                ["Cache:LocalSizeLimit"] = TestLocalSizeLimit
+            });
 
-            configuration.AddInMemoryCollection(values);
-        });
+        base.ConfigureWebApplicationBuilder(builder);
     }
 }
